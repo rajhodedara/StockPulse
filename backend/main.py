@@ -10,9 +10,10 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from market_data import fetch_ohlcv, latest_price, to_records
-from technicals  import add_all_indicators, latest_indicator_snapshot, rsi_signal
-from polymarket  import polymarket_market_sentiment, search_markets
+# FIX: Remove 'backend.' prefix since main.py is inside the backend folder
+from data.market_data import fetch_ohlcv, latest_price, to_records
+from data.technical import add_all_indicators, latest_indicator_snapshot, rsi_signal
+from data.polymarket import search_markets, polymarket_market_sentiment
 
 logging.basicConfig(
     level  = logging.INFO,
