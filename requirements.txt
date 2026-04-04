@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+streamlit
+yfinance
+pandas
+requestspip install -r requirements.txt
