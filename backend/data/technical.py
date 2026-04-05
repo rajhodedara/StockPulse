@@ -8,7 +8,6 @@ import pandas as pd
 import numpy as np
 import logging
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -69,11 +68,14 @@ def add_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
     df["RSI"] = rsi(close)
 
+    # THE FIX: Assign columns directly to avoid duplicates
     macd_df = macd(close)
-    df = pd.concat([df, macd_df], axis=1)
+    for col in macd_df.columns:
+        df[col] = macd_df[col]
 
     bb_df = bollinger_bands(close)
-    df = pd.concat([df, bb_df], axis=1)
+    for col in bb_df.columns:
+        df[col] = bb_df[col]
 
     # SMAs for chart overlay
     df["SMA_7"]  = sma(close, 7)
