@@ -11,6 +11,14 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 # FIX: Remove 'backend.' prefix since main.py is inside the backend folder
+from data.news_ingestor import fetch_news
+from models.sentiment_engine import (
+    analyze_sentiment, 
+    get_average_score, 
+    get_signal, 
+    calculate_confidence, 
+    generate_reason
+)
 from data.market_data import fetch_ohlcv, latest_price, to_records
 from data.technical import add_all_indicators, latest_indicator_snapshot, rsi_signal
 from data.polymarket import search_markets, polymarket_market_sentiment
@@ -139,7 +147,39 @@ def kpis(ticker: str = Query("AAPL")):
         "polymarket_label" : poly_label,
     }
 
+@app.get("/api/sentiment")
+def sentiment_endpoint(ticker: str = Query("AAPL")):
+    try:
+        # 1. Fetch the raw news headlines
+        news_list = fetch_news(ticker, limit=10)
+        
+        if not news_list:
+            return {"ticker": ticker.upper(), "error": "No recent news found."}
 
+        # 2. Run the news through FinBERT
+        analyzed_news = analyze_sentiment(news_list)
+
+        # 3. Calculate the aggregate metrics
+        avg_score = get_average_score(analyzed_news)
+        signal = get_signal(avg_score)
+        confidence = calculate_confidence(analyzed_news)
+        reason = generate_reason(analyzed_news)
+
+        # 4. Send the clean package to the frontend
+        return {
+            "ticker": ticker.upper(),
+            "summary": {
+                "signal": signal,           # e.g., "STRONG BUY"
+                "score": avg_score,         # e.g., 0.45
+                "confidence": confidence,   # e.g., 0.8
+                "reason": reason            # e.g., "Majority positive news sentiment"
+            },
+            "articles": analyzed_news       # The individual headlines and their scores
+        }
+        
+    except Exception as exc:
+        logger.error(f"Sentiment analysis failed for {ticker}: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to process sentiment analysis.")
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

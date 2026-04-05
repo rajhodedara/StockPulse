@@ -173,6 +173,20 @@ INTERVAL_MAP = {"1d": "Daily", "1h": "Hourly"}
 
 
 # ── API helpers ───────────────────────────────────────────────────────────────
+@st.cache_data(ttl=300)  # Cache for 5 minutes
+def get_sentiment(ticker: str) -> dict:
+    """Fetches FinBERT sentiment analysis for the given ticker."""
+    try:
+        # Increased timeout because FinBERT takes a few seconds to run
+        r = requests.get(
+            f"{API_BASE}/api/sentiment",
+            params={"ticker": ticker},
+            timeout=30, 
+        )
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        return {"error": str(e)}
 @st.cache_data(ttl=60)
 def get_kpis(ticker: str) -> dict:
     try:
@@ -700,6 +714,93 @@ if poly_data:
 # ════════════════════════════════════════════════════════════════════════════
 # PERSON 2 PLACEHOLDER
 # ════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════
+# NEWS & AI SENTIMENT (FinBERT)
+# ════════════════════════════════════════════════════════════════════════════
 st.markdown("---")
-st.markdown("### 📰 News & Sentiment *(Person 2)*")
-st.info("Person 2 will plug in: news table + FinBERT sentiment + investment signal gauge here.")
+st.markdown("### 📰 AI News Sentiment (FinBERT)")
+
+with st.spinner(f"Analyzing latest news for {ticker} using FinBERT..."):
+    sentiment_data = get_sentiment(ticker)
+
+if "error" in sentiment_data:
+    st.error(f"⚠️ Failed to load sentiment data: {sentiment_data['error']}")
+elif not sentiment_data.get("articles"):
+    st.info(f"ℹ️ No recent news articles found to analyze for {ticker}.")
+else:
+    summary = sentiment_data["summary"]
+    articles = sentiment_data["articles"]
+
+    col_sent_score, col_sent_news = st.columns([1, 2.5])
+
+    # ── Left Column: Sentiment Score ──────────────────────────────────────────
+    with col_sent_score:
+        signal = summary.get("signal", "NEUTRAL")
+        score = summary.get("score", 0.0)
+        conf = summary.get("confidence", 0.0)
+        reason = summary.get("reason", "")
+
+        # Color mapping based on signal
+        if "BUY" in signal:
+            sig_color = "#3fb950"
+        elif "SELL" in signal:
+            sig_color = "#f85149"
+        else:
+            sig_color = "#e3b341"
+
+        st.markdown(f"""
+        <div style='background:#161b22;border:1px solid #30363d;
+                    border-radius:12px;padding:24px;text-align:center;'>
+            <div style='font-size:0.75rem;color:#8b949e;
+                        text-transform:uppercase;letter-spacing:0.08em;'>
+                AI Market Signal
+            </div>
+            <div style='font-size:2.4rem;font-weight:700;
+                        color:{sig_color};margin:8px 0;'>
+                {signal}
+            </div>
+            <div style='font-size:0.95rem;color:#e6edf3;font-weight:600;margin-bottom:8px;'>
+                Score: {score:+.2f}
+            </div>
+            <div style='font-size:0.8rem;color:#8b949e;margin-bottom:4px;'>
+                Confidence: {conf:.0%}
+            </div>
+            <div style='font-size:0.75rem;color:#58a6ff;font-style:italic;'>
+                "{reason}"
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ── Right Column: News Feed ───────────────────────────────────────────────
+    with col_sent_news:
+        st.markdown("<div class='section-header'>Latest Analyzed Headlines</div>", unsafe_allow_html=True)
+        
+        # Build a visual feed instead of a standard dataframe
+        feed_html = "<div style='display:flex; flex-direction:column; gap:12px;'>"
+        
+        for art in articles:
+            title = art.get("title", "")
+            sent = art.get("sentiment", "neutral").upper()
+            art_score = art.get("score", 0.0)
+            
+            # Match sentiment to your CSS badges
+            if sent == "POSITIVE":
+                badge_class = "badge-buy"
+            elif sent == "NEGATIVE":
+                badge_class = "badge-sell"
+            else:
+                badge_class = "badge-neutral"
+                
+            feed_html += f"""
+            <div style='background:#21262d; border:1px solid #30363d; border-radius:8px; padding:12px 16px;'>
+                <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;'>
+                    <span class='badge {badge_class}'>{sent} ({art_score:+.2f})</span>
+                </div>
+                <div style='font-size:0.95rem; color:#e6edf3; font-weight:500;'>
+                    {title}
+                </div>
+            </div>
+            """
+            
+        feed_html += "</div>"
+        st.markdown(feed_html, unsafe_allow_html=True)
