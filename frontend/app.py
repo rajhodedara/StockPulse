@@ -578,7 +578,7 @@ hr {
 ::-webkit-scrollbar-thumb:hover { background: #4a5568; }
 
 [data-testid="stSidebarNav"] { display: none; }
-.block-container { padding-top: 1.5rem !important; padding-bottom: 2rem !important; }
+.block-container { padding-top: 4.5rem !important; padding-bottom: 2rem !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1620,10 +1620,23 @@ with tab_news:
                 unsafe_allow_html=True,
             )
 
+            source_badges = {
+                "news": ("YAHOO", "pill-info"),
+                "twitter": ("TWITTER", "pill-pur"),
+                "reddit": ("REDDIT", "pill-neu"),
+                "stocktwits": ("STOCKTWITS", "pill-pur"),
+            }
+
             for art in articles:
                 title     = art.get("title", "Untitled")
                 sent      = (art.get("sentiment") or "neutral").lower()
                 art_score = art.get("score", 0.0) or 0.0
+                source_key = (art.get("source") or "news").lower()
+                source_label, source_class = source_badges.get(
+                    source_key,
+                    (source_key.upper(), "pill-info"),
+                )
+                url = art.get("url", "")
 
                 if sent == "positive":
                     pill_class, item_class, icon = "pill-pos", "positive", "↑"
@@ -1632,11 +1645,22 @@ with tab_news:
                 else:
                     pill_class, item_class, icon = "pill-neu", "neutral",  "→"
 
+                view_link = (
+                    f"<a href='{url}' target='_blank' style='font-family:Space Mono,monospace;"
+                    f"font-size:0.6rem;color:#4a5568;text-decoration:none;"
+                    f"white-space:nowrap;'>View &#8599;</a>"
+                    if url else ""
+                )
+
                 st.markdown(
                     f"<div class='news-item {item_class}'>"
-                    f"<div style='display:flex;align-items:center;gap:8px;'>"
+                    f"<div style='display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;'>"
+                    f"<div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;'>"
                     f"<span class='pill {pill_class}'>"
                     f"{icon} {sent.upper()} {art_score:+.2f}</span>"
+                    f"<span class='pill {source_class}'>{source_label}</span>"
+                    f"</div>"
+                    f"{view_link}"
                     f"</div>"
                     f"<div class='news-headline'>{title}</div>"
                     f"</div>",
