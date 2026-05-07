@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import logging
 import traceback
-from collections import defaultdict
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
@@ -17,6 +16,7 @@ from data.news_ingestor import fetch_news
 from data.polymarket import polymarket_market_sentiment, search_markets
 from data.social_ingestor import fetch_social_posts
 from data.technical import add_all_indicators, latest_indicator_snapshot, rsi_signal
+from models.public_opinion_engine import analyze_public_opinion
 from models.scoring_engine import build_signal_payload
 from models.sentiment_engine import (
     analyze_sentiment,
@@ -25,7 +25,6 @@ from models.sentiment_engine import (
     get_average_score,
     get_signal,
 )
-from models.social_sentiment_engine import analyze_social_sentiment
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,37 +45,56 @@ app.add_middleware(
 )
 
 
-def _balanced_articles(
-    analyzed_news: list[dict],
-    analyzed_social: list[dict],
-    total_limit: int = 12,
-    max_per_source: int = 4,
-) -> list[dict]:
-    grouped: dict[str, list[dict]] = defaultdict(list)
+def _official_analysis_payload(ticker: str) -> dict:
+    news_list = fetch_news(ticker, limit=20)
+    analyzed_news = analyze_sentiment(news_list) if news_list else []
 
-    for article in analyzed_news + analyzed_social:
-        source = (article.get("source") or "news").lower()
-        if len(grouped[source]) < max_per_source:
-            grouped[source].append(article)
+    if not analyzed_news:
+        return {
+            "summary": {
+                "signal": "NEUTRAL",
+                "score": 0.0,
+                "confidence": 0.0,
+                "reason": "No recent Yahoo Finance news found.",
+            },
+            "articles": [],
+            "sources": [],
+        }
 
-    preferred_order = ["stocktwits", "reddit", "news"]
-    balanced: list[dict] = []
-    index = 0
+    avg_score = get_average_score(analyzed_news)
+    signal = get_signal(avg_score)
+    confidence = calculate_confidence(analyzed_news)
+    reason = generate_reason(analyzed_news)
+    sources = [
+        {
+            "title": article.get("title", "Yahoo article"),
+            "source": article.get("source", "yahoo"),
+            "url": article.get("url", ""),
+        }
+        for article in analyzed_news[:5]
+        if article.get("url")
+    ]
 
-    while len(balanced) < total_limit:
-        added = False
-        for source in preferred_order:
-            source_items = grouped.get(source, [])
-            if index < len(source_items):
-                balanced.append(source_items[index])
-                added = True
-                if len(balanced) >= total_limit:
-                    break
-        if not added:
-            break
-        index += 1
+    return {
+        "summary": {
+            "signal": signal,
+            "score": avg_score,
+            "confidence": confidence,
+            "reason": reason,
+        },
+        "articles": analyzed_news,
+        "sources": sources,
+    }
 
-    return balanced
+
+def _public_opinion_payload(ticker: str) -> dict:
+    try:
+        posts = fetch_social_posts(ticker, limit_per_source=10)
+    except Exception as exc:
+        logger.warning("Public opinion fetch failed for %s: %s", ticker, exc)
+        posts = []
+
+    return analyze_public_opinion(posts)
 
 
 @app.get("/")
@@ -91,7 +109,7 @@ def root():
             "/api/polymarket",
             "/api/kpis",
             "/api/sentiment",
-            "/api/social-sentiment",
+            "/api/public-opinion",
             "/api/signal",
         ],
     }
@@ -201,48 +219,10 @@ def kpis(ticker: str = Query("AAPL")):
 @app.get("/api/sentiment")
 def sentiment_endpoint(ticker: str = Query("AAPL")):
     try:
-        news_list = fetch_news(ticker, limit=10)
-        analyzed_news = analyze_sentiment(news_list)
-        analyzed_social: list[dict] = []
-
-        try:
-            social_posts = fetch_social_posts(ticker, limit_per_source=5)
-            social_summary = analyze_social_sentiment(social_posts)
-            analyzed_social = social_summary.get("posts", [])
-        except Exception as exc:
-            logger.warning("Social sentiment merge failed for %s: %s", ticker, exc)
-
-        articles = _balanced_articles(analyzed_news, analyzed_social)
-        if not articles:
-            return {
-                "ticker": ticker.upper(),
-                "error": "No recent news found.",
-            }
-
-        avg_score = get_average_score(articles)
-        signal = get_signal(avg_score)
-        confidence = calculate_confidence(articles)
-        reason = generate_reason(articles)
-        sources = [
-            {
-                "title": article.get("title") or article.get("text") or "News article",
-                "source": article.get("source", "news"),
-                "url": article.get("url", ""),
-            }
-            for article in articles[:5]
-            if article.get("url")
-        ]
-
         return {
             "ticker": ticker.upper(),
-            "summary": {
-                "signal": signal,
-                "score": avg_score,
-                "confidence": confidence,
-                "reason": reason,
-            },
-            "articles": articles,
-            "sources": sources,
+            "official_analysis": _official_analysis_payload(ticker),
+            "public_opinion": _public_opinion_payload(ticker),
         }
     except Exception as exc:
         logger.error("Sentiment failed for %s: %s", ticker, exc)
@@ -252,26 +232,19 @@ def sentiment_endpoint(ticker: str = Query("AAPL")):
         )
 
 
-@app.get("/api/social-sentiment")
-def social_sentiment_endpoint(ticker: str = Query("AAPL")):
+@app.get("/api/public-opinion")
+def public_opinion_endpoint(ticker: str = Query("AAPL")):
     try:
-        posts = fetch_social_posts(ticker, limit_per_source=20)
-        summary = analyze_social_sentiment(posts)
+        summary = _public_opinion_payload(ticker)
         return {
             "ticker": ticker.upper(),
-            "summary": {
-                "signal": get_signal(summary["score"]),
-                "score": summary["score"],
-                "confidence": summary["confidence"],
-                "volume": summary["volume"],
-            },
-            "posts": summary["posts"],
+            "public_opinion": summary,
         }
     except Exception as exc:
-        logger.error("Social sentiment failed for %s: %s", ticker, exc)
+        logger.error("Public opinion failed for %s: %s", ticker, exc)
         raise HTTPException(
             status_code=500,
-            detail="Failed to process social sentiment analysis.",
+            detail="Failed to process public opinion analysis.",
         )
 
 

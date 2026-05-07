@@ -164,7 +164,7 @@ def build_signal_payload(ticker: str) -> dict:
             for article in analyzed_news[:3]:
                 source_candidates.append({
                     "title": article.get("title", "News article"),
-                    "source": "news",
+                    "source": article.get("source", "yahoo"),
                     "url": article.get("url", ""),
                 })
     except Exception as exc:
