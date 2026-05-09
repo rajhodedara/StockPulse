@@ -847,12 +847,15 @@ company = analysis_config["company"]
 period_label = analysis_config["period_label"]
 period_days = analysis_config["period_days"]
 interval = analysis_config["interval"]
-chart_type = analysis_config["chart_type"]
-show_bb = analysis_config["show_bb"]
-show_sma7 = analysis_config["show_sma7"]
-show_sma21 = analysis_config["show_sma21"]
-show_sma50 = analysis_config["show_sma50"]
-show_vol = analysis_config["show_vol"]
+# Visual controls should respond immediately without requiring another
+# "Analyze Stock" click. Data-selection controls still follow the last
+# committed analysis config until the user refreshes or re-runs.
+chart_type = pending_config["chart_type"]
+show_bb = pending_config["show_bb"]
+show_sma7 = pending_config["show_sma7"]
+show_sma21 = pending_config["show_sma21"]
+show_sma50 = pending_config["show_sma50"]
+show_vol = pending_config["show_vol"]
 
 
 # ── Page Header ───────────────────────────────────────────────────────────────
