@@ -8,6 +8,7 @@ import requests
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import os
 
 # ── Page config (MUST be first) ───────────────────────────────────────────────
 st.set_page_config(
@@ -583,7 +584,10 @@ hr {
 """, unsafe_allow_html=True)
 
 # ── Constants ──────────────────────────────────────────────────────────────────
-API_BASE = "http://localhost:8000"
+API_BASE = os.getenv(
+    "API_BASE",
+    "http://localhost:8000"
+)
 
 if "analysis_config" not in st.session_state:
     st.session_state["analysis_config"] = None
